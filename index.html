@@ -1,0 +1,270 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Radar Chart Builder (mobile-ready)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1724; --card:#111827; --accent:#06b6d4; --muted:#94a3b8; --glass: rgba(255,255,255,0.03);
+  }
+  *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#071022,#0b1220);color:#e6eef6}
+  .wrap{max-width:1100px;margin:16px auto;padding:12px;display:grid;grid-template-columns:1fr 360px;gap:12px}
+  @media(max-width:860px){.wrap{grid-template-columns:1fr;}}
+  .card{background:var(--card);border-radius:12px;padding:12px;box-shadow:0 6px 20px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
+  header{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  h1{font-size:18px;margin:0}
+  p.lead{margin:6px 0 12px;color:var(--muted);font-size:13px}
+  #chartWrap{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    align-items:stretch;
+    max-height:80vh;  /* limit the height */
+    overflow:auto;    /* scroll inside instead of page growing */
+  }
+  canvas{
+    background:var(--glass);
+    border-radius:8px;
+    padding:6px;
+    max-height:100%;   /* respect parent max-height */
+  }
+  .controls{display:flex;gap:8px;flex-wrap:wrap}
+  button{background:linear-gradient(180deg,#0ea5a4,#028489);border:none;color:#051019;padding:8px 10px;border-radius:8px;font-weight:600}
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--accent)}
+  .form{display:flex;flex-direction:column;gap:8px}
+  .row{display:flex;gap:8px;align-items:center}
+  input[type="text"], input[type="number"]{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+  .fields{display:grid;grid-template-columns:repeat(1,1fr);gap:8px;max-height:56vh;overflow:auto;padding-right:6px}
+  @media(min-width:860px){ .fields{grid-template-columns:1fr; } }
+  .field{display:flex;gap:8px}
+  footer{margin-top:8px;color:var(--muted);font-size:13px;text-align:center}
+  .small{font-size:12px;color:var(--muted)}
+  .flex-between{display:flex;justify-content:space-between;align-items:center}
+  .muted{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <!-- Left: Chart -->
+  <div class="card" id="left">
+    <header>
+      <h1>Radar Chart Builder</h1>
+    </header>
+    <p class="lead">Edit labels & values on the right. Mobile-friendly — press <strong>Update chart</strong> or enable Auto-update.</p>
+
+    <div id="chartWrap">
+      <canvas id="radarCanvas" width="800" height="600"></canvas>
+      <div class="controls">
+        <button id="updateBtn">Update chart</button>
+        <button class="secondary" id="randBtn">Randomize</button>
+        <button id="saveBtn" class="secondary">Save</button>
+        <button id="loadBtn" class="secondary">Load</button>
+        <button id="exportBtn" class="secondary">Export PNG</button>
+        <label style="margin-left:auto" class="small muted"><input type="checkbox" id="autoUpdate"> Auto-update</label>
+      </div>
+      <div class="flex-between small muted" style="margin-top:6px">
+        <div>Max scale: <span id="maxScaleText">auto</span></div>
+        <div id="hint" class="small">Tip: use 5 categories for a pentagon shape</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Form -->
+  <div class="card" id="right">
+    <div class="form">
+      <div class="flex-between">
+        <strong>Categories & Values</strong>
+        <div>
+          <button id="addBtn" class="secondary">+ Add</button>
+          <button id="removeBtn" class="secondary">− Remove</button>
+        </div>
+      </div>
+
+      <div class="fields" id="fields"></div>
+
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <input type="number" id="maxScale" placeholder="Manual max scale (empty=auto)" min="1" style="width:160px">
+        <button id="setMaxBtn" class="secondary">Set scale</button>
+        <button id="clearMaxBtn" class="secondary">Auto scale</button>
+      </div>
+
+      <div style="margin-top:10px">
+        <label class="small muted">Palette</label>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button data-color="#06b6d4" class="swatch" style="padding:6px;border-radius:8px;border:none;background:#06b6d4"></button>
+          <button data-color="#ef4444" class="swatch" style="padding:6px;border-radius:8px;border:none;background:#ef4444"></button>
+          <button data-color="#f59e0b" class="swatch" style="padding:6px;border-radius:8px;border:none;background:#f59e0b"></button>
+          <button data-color="#22c55e" class="swatch" style="padding:6px;border-radius:8px;border:none;background:#22c55e"></button>
+        </div>
+      </div>
+
+      <footer>
+        <div class="small">Saved locally. Works offline. Built with Chart.js.</div>
+      </footer>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js v4 -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+/* ======== App logic ======== */
+const defaultData = {
+  labels: ['Discipline','Creativity','Fitness','Focus','Social'],
+  values: [3,4,2,5,3],
+  color: '#06b6d4',
+  maxScale: null
+};
+
+const fieldsEl = document.getElementById('fields');
+const updateBtn = document.getElementById('updateBtn');
+const addBtn = document.getElementById('addBtn');
+const removeBtn = document.getElementById('removeBtn');
+const randBtn = document.getElementById('randBtn');
+const saveBtn = document.getElementById('saveBtn');
+const loadBtn = document.getElementById('loadBtn');
+const exportBtn = document.getElementById('exportBtn');
+const autoCheckbox = document.getElementById('autoUpdate');
+const maxScaleInput = document.getElementById('maxScale');
+const setMaxBtn = document.getElementById('setMaxBtn');
+const clearMaxBtn = document.getElementById('clearMaxBtn');
+const maxScaleText = document.getElementById('maxScaleText');
+let current = loadLocal() || defaultData;
+
+function loadLocal(){
+  try{
+    const raw = localStorage.getItem('radarChartData_v1');
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }
+}
+function saveLocal(){
+  localStorage.setItem('radarChartData_v1', JSON.stringify(current));
+  flash('Saved');
+}
+function flash(msg){
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.position='fixed';el.style.left='50%';el.style.transform='translateX(-50%)';el.style.bottom='18px';
+  el.style.background='rgba(0,0,0,0.6)';el.style.color='#fff';el.style.padding='8px 12px';el.style.borderRadius='10px';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1200);
+}
+
+/* Build fields UI */
+function rebuildFields(){
+  fieldsEl.innerHTML='';
+  current.labels.forEach((lab,i)=>{
+    const wrapper = document.createElement('div'); wrapper.className='field';
+    const labIn = document.createElement('input'); labIn.type='text'; labIn.value=lab; labIn.placeholder='Label';
+    const valIn = document.createElement('input'); valIn.type='number'; valIn.min='0'; valIn.value=current.values[i] ?? 0;
+    labIn.addEventListener('input', ()=>{ current.labels[i]=labIn.value; if(autoCheckbox.checked) updateChart(); });
+    valIn.addEventListener('input', ()=>{ current.values[i]=Number(valIn.value||0); if(autoCheckbox.checked) updateChart(); });
+    wrapper.appendChild(labIn); wrapper.appendChild(valIn);
+    fieldsEl.appendChild(wrapper);
+  });
+  maxScaleText.textContent = current.maxScale ? current.maxScale : 'auto';
+}
+rebuildFields();
+
+/* Chart init */
+const ctx = document.getElementById('radarCanvas').getContext('2d');
+let radarChart = null;
+function createChart(){
+  if(radarChart) radarChart.destroy();
+  const maxv = current.maxScale || Math.max(...current.values,1);
+  radarChart = new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: current.labels,
+      datasets: [{
+        label: 'Stats',
+        data: current.values,
+        borderColor: current.color,
+        backgroundColor: hexToRgba(current.color,0.18),
+        pointBackgroundColor: current.color,
+        pointRadius: 6,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive:true,
+      maintainAspectRatio:false,
+      scales: {
+        r: {
+          beginAtZero:true,
+          suggestedMax: maxv,
+          ticks: {stepSize: Math.max(1, Math.ceil(maxv/5))},
+          grid: {color:'rgba(255,255,255,0.04)'},
+          angleLines: {color:'rgba(255,255,255,0.06)'},
+          pointLabels: {color:'#cbd5e1',font:{size:12}}
+        }
+      },
+      plugins: {
+        legend:{display:false},
+        tooltip:{enabled:true}
+      }
+    }
+  });
+}
+function hexToRgba(hex, a=1){
+  hex = hex.replace('#','');
+  const bigint = parseInt(hex,16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+createChart();
+
+/* Controls */
+updateBtn.addEventListener('click', updateChart);
+addBtn.addEventListener('click', ()=>{ current.labels.push('New'); current.values.push(1); rebuildFields(); if(autoCheckbox.checked) updateChart(); });
+removeBtn.addEventListener('click', ()=>{ if(current.labels.length>1){ current.labels.pop(); current.values.pop(); rebuildFields(); if(autoCheckbox.checked) updateChart(); }});
+randBtn.addEventListener('click', ()=>{ current.values = current.values.map(()=> Math.ceil(Math.random()*6)); rebuildFields(); if(autoCheckbox.checked) updateChart(); });
+saveBtn.addEventListener('click', saveLocal);
+loadBtn.addEventListener('click', ()=>{ const loaded = loadLocal(); if(loaded){ current = loaded; rebuildFields(); updateChart(); flash('Loaded'); } else flash('No saved'); });
+exportBtn.addEventListener('click', ()=>{ const url = document.getElementById('radarCanvas').toDataURL('image/png'); const a = document.createElement('a'); a.href = url; a.download = 'radar-chart.png'; a.click(); });
+document.querySelectorAll('.swatch').forEach(btn=>{ btn.addEventListener('click', ()=>{ current.color = btn.dataset.color; if(autoCheckbox.checked) updateChart(); rebuildFields(); }); });
+
+setMaxBtn.addEventListener('click', ()=>{ const v = Number(maxScaleInput.value || 0); if(v>0){ current.maxScale = v; maxScaleText.textContent = v; updateChart(); flash('Max set'); }});
+clearMaxBtn.addEventListener('click', ()=>{ current.maxScale = null; maxScaleInput.value=''; maxScaleText.textContent='auto'; updateChart(); flash('Auto scale'); });
+
+function updateChart(){
+  current.values = current.values.map(v => Number(v) || 0);
+  if(current.labels.length !== current.values.length){
+    const n = Math.max(current.labels.length,current.values.length);
+    while(current.labels.length<n) current.labels.push('New');
+    while(current.values.length<n) current.values.push(0);
+    rebuildFields();
+  }
+  createChart();
+  saveLocal();
+}
+
+/* Auto update toggle */
+autoCheckbox.addEventListener('change', ()=>{ if(autoCheckbox.checked) flash('Auto update ON'); else flash('Auto update OFF'); });
+
+if(!localStorage.getItem('radarChartData_v1')){ saveLocal(); }
+
+/* make chart responsive height, constrained to prevent page scrolling */
+function resizeCanvas(){
+  const wrap = document.getElementById('chartWrap');
+  const c = document.getElementById('radarCanvas');
+  const maxH = wrap.clientHeight; // constrained by CSS max-height
+  c.style.height = Math.min(window.innerWidth < 860 ? window.innerWidth * 0.9 : 460, maxH) + 'px';
+  if(radarChart) radarChart.resize();
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+</script>
+</body>
+</html>
+
+   
